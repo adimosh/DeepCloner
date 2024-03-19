@@ -1,4 +1,4 @@
-﻿namespace DeepCloner.Core.Helpers;
+namespace DeepCloner.Core.Helpers;
 
 internal static class DeepClonerGenerator
 {
@@ -219,4 +219,7 @@ internal static class DeepClonerGenerator
         if (cloner == null) return objTo;
         return cloner(objFrom, objTo, new());
     }
+
+    [ThreadStatic]
+    internal static Type[]? SuppressedAttributeTypes = null;
 }

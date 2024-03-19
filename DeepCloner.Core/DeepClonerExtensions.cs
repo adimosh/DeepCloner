@@ -1,4 +1,4 @@
-﻿using DeepCloner.Core.Helpers;
+using DeepCloner.Core.Helpers;
 using JetBrains.Annotations;
 
 namespace DeepCloner.Core;
@@ -43,5 +43,15 @@ public static class DeepClonerExtensions
     public static T ShallowClone<T>(this T obj)
     {
         return ShallowClonerGenerator.CloneObject(obj);
+    }
+
+    public static void SetSuppressedAttributes(params Type[]suppressedAttributes)
+    {
+            foreach (Type type in suppressedAttributes)
+            {
+                if (!type.IsSubclassOf(typeof(Attribute)))
+                    throw new Exception("Bad argument to SetSuppressedAttributes. Type not derived from Attribute class");
+            }
+        DeepClonerGenerator.SuppressedAttributeTypes = suppressedAttributes;
     }
 }

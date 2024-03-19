@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -120,34 +120,43 @@ internal static class DeepClonerExprGenerator
 
         foreach (var fieldInfo in fi)
         {
-            if (!DeepClonerSafeTypes.CanReturnSameObject(fieldInfo.FieldType))
+            if (FieldIsSuppressed(fieldInfo))
             {
-                var methodInfo = fieldInfo.FieldType.IsValueType()
-                    ? typeof(DeepClonerGenerator).GetPrivateStaticMethod(nameof(DeepClonerGenerator.CloneStructInternal))!
-                        .MakeGenericMethod(fieldInfo.FieldType)
-                    : typeof(DeepClonerGenerator).GetPrivateStaticMethod(nameof(DeepClonerGenerator.CloneClassInternal))!;
-
-                var get = Expression.Field(fromLocal, fieldInfo);
-
-                // toLocal.Field = Clone...Internal(fromLocal.Field)
-                var call = (Expression)Expression.Call(methodInfo, get, state);
-                if (!fieldInfo.FieldType.IsValueType())
-                    call = Expression.Convert(call, fieldInfo.FieldType);
-
-                // should handle specially
-                // todo: think about optimization, but it rare case
-                var isReadonly = _readonlyFields.GetOrAdd(fieldInfo, f => f.IsInitOnly);
-                if (isReadonly)
+                // Don't clone; instead set the field to its default value (which will usually be "null" for
+                // non-value types).
+                expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), Expression.Default(fieldInfo.FieldType)));
+            }
+            else
+            {
+                if (!DeepClonerSafeTypes.CanReturnSameObject(fieldInfo.FieldType))
                 {
-                    expressionList.Add(Expression.Call(
-                                           Expression.Constant(fieldInfo),
-                                           _fieldSetMethod,
-                                           Expression.Convert(toLocal, typeof(object)),
-                                           Expression.Convert(call, typeof(object))));
-                }
-                else
-                {
-                    expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), call));
+                    var methodInfo = fieldInfo.FieldType.IsValueType()
+                        ? typeof(DeepClonerGenerator).GetPrivateStaticMethod(nameof(DeepClonerGenerator.CloneStructInternal))!
+                            .MakeGenericMethod(fieldInfo.FieldType)
+                        : typeof(DeepClonerGenerator).GetPrivateStaticMethod(nameof(DeepClonerGenerator.CloneClassInternal))!;
+
+                    var get = Expression.Field(fromLocal, fieldInfo);
+
+                    // toLocal.Field = Clone...Internal(fromLocal.Field)
+                    var call = (Expression)Expression.Call(methodInfo, get, state);
+                    if (!fieldInfo.FieldType.IsValueType())
+                        call = Expression.Convert(call, fieldInfo.FieldType);
+
+                    // should handle specially
+                    // todo: think about optimization, but it rare case
+                    var isReadonly = _readonlyFields.GetOrAdd(fieldInfo, f => f.IsInitOnly);
+                    if (isReadonly)
+                    {
+                        expressionList.Add(Expression.Call(
+                                               Expression.Constant(fieldInfo),
+                                               _fieldSetMethod,
+                                               Expression.Convert(toLocal, typeof(object)),
+                                               Expression.Convert(call, typeof(object))));
+                    }
+                    else
+                    {
+                        expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), call));
+                    }
                 }
             }
         }
@@ -161,6 +170,19 @@ internal static class DeepClonerExprGenerator
         blockParams.Add(toLocal);
 
         return Expression.Lambda(funcType, Expression.Block(blockParams, expressionList), from, state).Compile();
+    }
+
+    private static bool FieldIsSuppressed(FieldInfo fieldInfo)
+    {
+        if (DeepClonerGenerator.SuppressedAttributeTypes != null)
+        {
+            foreach (Type attrType in DeepClonerGenerator.SuppressedAttributeTypes)
+            {
+                if (fieldInfo.GetCustomAttribute(attrType, false) != null)
+                    return true;
+            }
+        }
+        return false;
     }
 
     private static object GenerateProcessArrayMethod(Type type)
