@@ -31,7 +31,7 @@ internal static class DeepClonerSafeTypes
         [typeof(IntPtr)] = true,
         [typeof(UIntPtr)] = true,
         [typeof(Guid)] = true,
-        
+
         // Others
         [typeof(DBNull)] = true,
         [StringComparer.Ordinal.GetType()] = true,
@@ -60,6 +60,14 @@ internal static class DeepClonerSafeTypes
         // pointers (e.g. int*) are unsafe, but we cannot do anything with it except blind copy
         if (type.IsEnum() || type.IsPointer)
         {
+            KnownTypes.TryAdd(type, true);
+            return true;
+        }
+
+        // Type.FullName can be null for certain types
+        if (type.FullName == null)
+        {
+            // return true because they should not clone
             KnownTypes.TryAdd(type, true);
             return true;
         }
